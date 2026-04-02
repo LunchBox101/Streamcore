@@ -8,3 +8,11 @@
 /dataSources.local.xml
 # Editor-based HTTP Client requests
 /httpRequests/
+target/
+*.class
+*.jar
+.idea/
+*.iml
+hls-output/
+test-video.ts
+test-video.mp4

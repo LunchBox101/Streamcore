@@ -1,5 +1,6 @@
 package com.streamcore.controller;
 
+import com.streamcore.service.HlsTranscodingService;
 import com.streamcore.service.StreamRelayService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
+import java.io.IOException;
 import java.net.URI;
 
 /**
@@ -31,9 +33,12 @@ public class StreamWebSocketHandler extends AbstractWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(StreamWebSocketHandler.class);
 
     private final StreamRelayService relayService;
+    private final HlsTranscodingService hlsService;
 
-    public StreamWebSocketHandler(StreamRelayService relayService) {
+    public StreamWebSocketHandler(StreamRelayService relayService,
+                                   HlsTranscodingService hlsService) {
         this.relayService = relayService;
+        this.hlsService = hlsService;
     }
 
     @Override
@@ -43,13 +48,27 @@ public class StreamWebSocketHandler extends AbstractWebSocketHandler {
 
         if (path.contains("/publish")) {
             relayService.registerPublisher(streamId, session);
-            session.sendMessage(new TextMessage("{\"status\":\"publishing\",\"streamId\":\"" + streamId + "\"}"));
+
+            try {
+                hlsService.startTranscoding(streamId);
+            } catch (IOException e) {
+                log.error("Failed to FFmpeg for streamId [{}]: {}", streamId, e.getMessage());
+            }
+            try {
+                session.sendMessage(new TextMessage("{\"status\":\"publishing\",\"streamId\":\"" + streamId + "\"}"));
+            } catch (IOException e) {
+                log.warn("Could not send publish-ack to session {}: {}", session.getId(), e.getMessage());
+            }
         } else if (path.contains("/watch")) {
             relayService.registerViewer(streamId, session);
             boolean live = relayService.isLive(streamId);
-            session.sendMessage(new TextMessage(
-                "{\"status\":\"watching\",\"streamId\":\"" + streamId + "\",\"live\":" + live + "}"
-            ));
+            try {
+                session.sendMessage(new TextMessage(
+                    "{\"status\":\"watching\",\"streamId\":\"" + streamId + "\",\"live\":" + live + "}"
+                ));
+            } catch (IOException e) {
+                log.warn("Could not send watch-ack to session {}: {}", session.getId(), e.getMessage());
+            }
         }
     }
 
@@ -61,6 +80,11 @@ public class StreamWebSocketHandler extends AbstractWebSocketHandler {
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
         String streamId = getStreamId(session);
         relayService.relayFrame(streamId, message);
+        try {
+            hlsService.writeChunk(message.getPayload().array());
+        } catch (IOException e ) {
+            log.error("Failed to write chunk to FFmpeg: {}", e.getMessage()); 
+        }
     }
 
     @Override
@@ -76,6 +100,7 @@ public class StreamWebSocketHandler extends AbstractWebSocketHandler {
 
         if (path.contains("/publish")) {
             relayService.removePublisher(streamId, session);
+            hlsService.stopTranscoding();
         } else {
             relayService.removeViewer(streamId, session);
         }
