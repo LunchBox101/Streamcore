@@ -1,6 +1,9 @@
 package com.streamcore.service;
 
 import com.streamcore.model.StreamSession;
+
+import jakarta.annotation.PreDestroy;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -11,6 +14,8 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * StreamRelayService
@@ -39,9 +44,19 @@ public class StreamRelayService {
     // streamId → StreamSession metadata
     private final Map<String, StreamSession> sessions = new ConcurrentHashMap<>();
 
+    private final ExecutorService relayExecutor = Executors.newFixedThreadPool(
+        Runtime.getRuntime().availableProcessors() * 2
+    );
+
     // Default stream key for Phase 1 (single-stream mode)
     public static final String DEFAULT_STREAM_ID = "live";
 
+    @PreDestroy
+    public void shutdown() {
+        relayExecutor.shutdown();
+        log.info("Relay executor shut down");
+    }
+    
     /**
      * Register a broadcaster. Creates a new StreamSession if one doesn't exist.
      */
@@ -79,12 +94,14 @@ public class StreamRelayService {
 
         for (WebSocketSession viewer : viewerList) {
             if (viewer.isOpen()) {
-                try {
-                    viewer.sendMessage(new BinaryMessage(payload));
-                } catch (IOException e) {
-                    log.warn("Failed to relay frame to viewer {} — removing", viewer.getId());
-                    viewerList.remove(viewer);
-                }
+                relayExecutor.submit(() -> {
+                    try {
+                        viewer.sendMessage(new BinaryMessage(payload));
+                    } catch (IOException e) {
+                        log.warn("Failed to relay frame to viewer {} — removing", viewer.getId());
+                        viewerList.remove(viewer);
+                    }
+                });
             }
         }
 
