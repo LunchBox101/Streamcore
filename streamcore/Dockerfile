@@ -7,11 +7,19 @@ COPY src ./src
 RUN mvn clean package -DskipTests -q
 
 # ---- Runtime stage ----
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /app/hls-output && chmod 777 /app/hls-output
+
 # Add a non-root user for security
-RUN addgroup -S streamcore && adduser -S streamcore -G streamcore
+RUN groupadd -r streamcore && useradd -r -g streamcore streamcore \
+    && chown -R streamcore:streamcore /app
 USER streamcore
 
 COPY --from=build /app/target/streamcore-0.0.1-SNAPSHOT.jar app.jar
