@@ -60,11 +60,16 @@ public class StreamRelayService {
     /**
      * Register a broadcaster. Creates a new StreamSession if one doesn't exist.
      */
-    public void registerPublisher(String streamId, WebSocketSession session) {
+    public boolean registerPublisher(String streamId, WebSocketSession session) {
+        if(publishers.containsKey(streamId) && publishers.get(streamId).isOpen()) {
+            log.warn("Stream [{}] already has a publisher — rejecting new connection", streamId);
+            return false;
+        }
         publishers.put(streamId, session);
         sessions.put(streamId, new StreamSession(streamId));
         viewers.putIfAbsent(streamId, new CopyOnWriteArrayList<>());
         log.info("Publisher connected for stream [{}] — sessionId={}", streamId, session.getId());
+        return true;
     }
 
     /**
@@ -145,5 +150,9 @@ public class StreamRelayService {
     public boolean isLive(String streamId) {
         WebSocketSession pub = publishers.get(streamId);
         return pub != null && pub.isOpen();
+    }
+
+    public WebSocketSession getPublisherSession(String streamId) {
+        return publishers.get(streamId);
     }
 }
