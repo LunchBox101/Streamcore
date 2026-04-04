@@ -59,7 +59,7 @@ public class HlsTranscodingService {
     }
 
     public void writeChunk(byte[] data) throws IOException {
-        if (ffmpegInput != null) {
+        if (ffmpegInput != null && ffmpegProcess != null && ffmpegProcess.isAlive()) {
             ffmpegInput.write(data);
             ffmpegInput.flush();
         }

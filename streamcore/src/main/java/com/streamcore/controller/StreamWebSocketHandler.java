@@ -47,17 +47,25 @@ public class StreamWebSocketHandler extends AbstractWebSocketHandler {
         String streamId = getStreamId(session);
 
         if (path.contains("/publish")) {
-            relayService.registerPublisher(streamId, session);
-
-            try {
-                hlsService.startTranscoding(streamId);
-            } catch (IOException e) {
-                log.error("Failed to FFmpeg for streamId [{}]: {}", streamId, e.getMessage());
-            }
-            try {
-                session.sendMessage(new TextMessage("{\"status\":\"publishing\",\"streamId\":\"" + streamId + "\"}"));
-            } catch (IOException e) {
-                log.warn("Could not send publish-ack to session {}: {}", session.getId(), e.getMessage());
+            boolean live = relayService.registerPublisher(streamId, session);
+            if(live) {  
+                try {
+                    hlsService.startTranscoding(streamId);
+                } catch (IOException e) {
+                    log.error("Failed to FFmpeg for streamId [{}]: {}", streamId, e.getMessage());
+                }
+                try {
+                    session.sendMessage(new TextMessage("{\"status\":\"publishing\",\"streamId\":\"" + streamId + "\"}"));
+                } catch (IOException e) {
+                    log.warn("Could not send publish-ack to session {}: {}", session.getId(), e.getMessage());
+                }
+            } else {
+                try {
+                    session.sendMessage(new TextMessage("{\"status\":\"rejected\",\"reason\":\"Stream already live\"}"));
+                    session.close();
+                } catch (IOException e) {
+                    log.warn("Could not send rejection message: {}", e.getMessage());
+                }
             }
         } else if (path.contains("/watch")) {
             relayService.registerViewer(streamId, session);
@@ -99,8 +107,10 @@ public class StreamWebSocketHandler extends AbstractWebSocketHandler {
         String streamId = getStreamId(session);
 
         if (path.contains("/publish")) {
-            relayService.removePublisher(streamId, session);
-            hlsService.stopTranscoding();
+            if(relayService.getPublisherSession(streamId) == session) {
+                relayService.removePublisher(streamId, session);
+                hlsService.stopTranscoding();
+            }
         } else {
             relayService.removeViewer(streamId, session);
         }
