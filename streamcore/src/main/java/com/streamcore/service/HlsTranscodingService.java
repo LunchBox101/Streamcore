@@ -1,9 +1,9 @@
 package com.streamcore.service;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
-import java.io.File;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,11 +21,11 @@ public class HlsTranscodingService {
 
         List<String> command = List.of(
             "ffmpeg",
-            "-analyzeduration", "0",
-            "-probesize", "32",
-            "-f", "mpegts",  
+            "-f", "webm",
             "-i", "pipe:0",
             "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
             "-c:a", "aac",
             "-f", "hls",
             "-hls_time", "2",

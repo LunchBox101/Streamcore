@@ -407,6 +407,7 @@
       width: 0%;
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
 </head>
 <body>
 
@@ -478,6 +479,7 @@
         </div>
       </div>
 
+      <video id="hls-player" style="width:100%;margin-top:12px;display:none;border-radius:3px;" controls autoplay muted></video>
       <div style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--muted);" id="view-stats">
         Waiting for stream...
       </div>
@@ -487,8 +489,8 @@
     <div class="card card-full">
       <div class="card-label">System Log</div>
       <div class="console" id="console">
-        <div class="log-muted">// StreamCore Phase 1 — WebSocket relay engine</div>
-        <div class="log-muted">// Connect a publisher to begin streaming</div>
+        <div class="log-muted">// StreamCore — Live streaming server</div>
+        <div class="log-muted">// WebSocket → FFmpeg → HLS · Connect a publisher to begin</div>
       </div>
     </div>
 
@@ -509,11 +511,11 @@
         </div>
 
         <div class="phase-list">
-          <div class="phase-item">
+          <div class="phase-item active">
             <div class="phase-dot"></div>
             Phase 1 — WebSocket ingest + binary relay
           </div>
-          <div class="phase-item">
+          <div class="phase-item active">
             <div class="phase-dot"></div>
             Phase 2 — FFmpeg transcoding + HLS output
           </div>
@@ -521,7 +523,7 @@
             <div class="phase-dot"></div>
             Phase 3 — Viewer management + concurrency
           </div>
-          <div class="phase-item">
+          <div class="phase-item active">
             <div class="phase-dot"></div>
             Phase 4 — Docker + production hardening
           </div>
@@ -571,6 +573,7 @@
   let publisherWs = null;
   let viewerWs = null;
   let publishInterval = null;
+  let mediaStream = null;
   let frameCount = 0;
   let bytesSent = 0;
   let bytesReceived = 0;
@@ -589,9 +592,17 @@
     return `ws://${window.location.host}`;
   }
 
-  function startPublishing() {
+  async function startPublishing() {
     const streamId = document.getElementById('pub-stream-input').value || 'live';
     const url = `${getWsBase()}/stream/publish?streamId=${streamId}`;
+
+    mediaStream = null;
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    } catch (err) {
+      log('Error accessing media devices: ' + err.message, 'error');
+      return;
+    }
 
     publisherWs = new WebSocket(url);
     publisherWs.binaryType = 'arraybuffer';
@@ -604,21 +615,16 @@
       document.getElementById('btn-stop-pub').disabled = false;
       log(`Publisher connected → stream [${streamId}]`, 'success');
 
-      // Simulate sending binary frames (random data to demonstrate relay)
-      publishInterval = setInterval(() => {
-        if (publisherWs && publisherWs.readyState === WebSocket.OPEN) {
-          const frame = new Uint8Array(1024 + Math.random() * 4096); // Fake frame
-          crypto.getRandomValues(frame);
-          publisherWs.send(frame.buffer);
-          frameCount++;
-          bytesSent += frame.length;
-          document.getElementById('pub-fps').textContent =
-            `${frameCount} frames sent · ${(bytesSent/1024).toFixed(1)} KB sent`;
-          document.getElementById('pub-meter').style.width =
-            `${Math.min(100, (frameCount % 60) / 60 * 100)}%`;
-          refreshStats();
+      const recorder = new MediaRecorder(mediaStream, { mimetype: 'video/webm;codecs=h264,opus'});
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && publisherWs.readyState === WebSocket.OPEN) {
+          publisherWs.send(event.data);
         }
-      }, 33); // ~30fps
+      };
+
+      recorder.start(1000);
+      publishInterval = recorder;
     };
 
     publisherWs.onmessage = (e) => {
@@ -642,7 +648,10 @@
   }
 
   function stopPublishing() {
-    if (publishInterval) { clearInterval(publishInterval); publishInterval = null; }
+    if (publishInterval) { 
+      publishInterval.stop();
+      mediaStream.getTracks().forEach(t => t.stop());
+      publishInterval = null; }
     if (publisherWs) { publisherWs.close(); publisherWs = null; }
     resetPublisher();
   }
@@ -661,6 +670,19 @@
   function startWatching() {
     const streamId = document.getElementById('view-stream-input').value || 'live';
     const url = `${getWsBase()}/stream/watch?streamId=${streamId}`;
+
+    // Start HLS player
+    const video = document.getElementById('hls-player');
+    video.style.display = 'block';
+    const hlsUrl = `/hls/${streamId}/index.m3u8`;
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({ liveSyncDurationCount: 3 });
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = hlsUrl;
+    }
 
     viewerWs = new WebSocket(url);
     viewerWs.binaryType = 'arraybuffer';

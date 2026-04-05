@@ -22,10 +22,10 @@ Publisher (Browser/OBS)
   Viewer 1, Viewer 2, Viewer N...
 ```
 
-**Phase 1 (current):** Raw WebSocket binary relay — publisher sends frames, server fans out to all viewers in real time.  
-**Phase 2:** FFmpeg transcoding + HLS segment output for browser-native playback.  
-**Phase 3:** Multi-stream support, viewer concurrency hardening, backpressure handling.  
-**Phase 4:** Docker production deployment, metrics dashboard, load testing.
+**Phase 1 Done:** Raw WebSocket binary relay — publisher sends frames, server fans out to all viewers in real time.  
+**Phase 2 Done:** FFmpeg transcoding + HLS segment output for browser-native playback.  
+**Phase 3 Done:** Multi-stream support, viewer concurrency hardening, backpressure handling.  
+**Phase 4 Done:** Docker production deployment, metrics dashboard, load testing.
 
 ---
 
