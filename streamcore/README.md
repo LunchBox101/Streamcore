@@ -88,16 +88,6 @@ Raw binary frames (not base64) are used for efficiency. Spring's `BinaryMessage`
 ### Configurable Buffer Sizes
 `application.properties` exposes `max-binary-message-buffer-size` (default 10MB) to handle large video frames without drops.
 
----
-
-## What's Next (Phase 2)
-
-- Integrate **FFmpeg via Java ProcessBuilder** for transcoding
-- Output **HLS segments** (`.m3u8` + `.ts` files) for browser-native playback
-- Add **backpressure** handling when viewers fall behind
-
----
-
 ## Author
 
 **Lance Leonard** — Senior Backend Java Engineer  
